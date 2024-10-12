@@ -28,41 +28,65 @@ public class AuditController {
     @PostMapping("/AppSetup")
     public ResponseEntity<Map<String, Object>> AppSetup(@ModelAttribute ServerCredentials serverCredentials,
                                                         HttpServletRequest request,
+                                                        @RequestParam(value = "apiHost", required = false) String apiHost,
                                                         @RequestParam(value = "apiKey", required = false) String apiKey,
                                                         @RequestParam(value = "apiSecret", required = false) String apiSecret,
-                                                        @RequestParam(value = "expireDate", required = false) String expireDate) { // expireDate as String
+                                                        @RequestParam(value = "email", required = false) String email,
+                                                        @RequestParam(value = "companyName", required = false) String companyName,
+                                                        @RequestParam(value = "companyId", required = false) String companyId,
+                                                        @RequestParam(value = "companyPhone", required = false) String companyPhone,
+                                                        @RequestParam(value = "productId", required = false) String productId,
+                                                        @RequestParam(value = "packageType", required = false) String packageType,
+                                                        @RequestParam(value = "softwareID", required = false) String softwareID,
+                                                        @RequestParam(value = "expireDate", required = false) String expireDate) {
+
         Map<String, Object> response = new HashMap<>();
 
         try {
-            // Set the apiHost to the default URL where the application is running
+            // Check the Origin or Referer header to ensure request comes from the allowed URL
+            String originHeader = request.getHeader("Origin");
+            String refererHeader = request.getHeader("Referer");
+           // String allowedOrigin = "https://adminpanel.hydottech.com";
+            String allowedOrigin = "http://localhost:3000";
 
-            String apiHost = GlobalFunctions.ApiHostGetter(request);
 
-            // Encrypt the apiKey, apiSecret, and apiHost using AES encryption
+            if (!allowedOrigin.equals(originHeader) && !allowedOrigin.equals(refererHeader)) {
+                response.put(GlobalConstants.Status, GlobalConstants.Failed);
+                response.put(GlobalConstants.Message, "Unauthorized request source");
+                return new ResponseEntity<>(response, HttpStatus.FORBIDDEN);
+            }
+
+            // Encrypt and process the data as you have done before
+            String encryptedApiHost = encrypt(apiHost, GlobalConstants.encryptionKey);
             String encryptedApiKey = encrypt(apiKey, GlobalConstants.encryptionKey);
             String encryptedApiSecret = encrypt(apiSecret, GlobalConstants.encryptionKey);
-            String encryptedApiHost = encrypt(apiHost, GlobalConstants.encryptionKey);
-
-            // Encrypt the expireDate as a string
-            String encryptedExpireDate = encrypt(expireDate, GlobalConstants.encryptionKey); // Encrypt the date string directly
+            String encryptedEmail = encrypt(email, GlobalConstants.encryptionKey);
+            String encryptedCompanyName = encrypt(companyName, GlobalConstants.encryptionKey);
+            String encryptedCompanyId = encrypt(companyId, GlobalConstants.encryptionKey);
+            String encryptedCompanyPhone = encrypt(companyPhone, GlobalConstants.encryptionKey);
+            String encryptedProductId = encrypt(productId, GlobalConstants.encryptionKey);
+            String encryptedPackageType = encrypt(packageType, GlobalConstants.encryptionKey);
+            String encryptedSoftwareID = encrypt(softwareID, GlobalConstants.encryptionKey);
 
             // Check if there are existing credentials
             ServerCredentials existingCredentials = auditServiceInterface.findExistingCredentials();
             if (existingCredentials != null) {
-                // Update only the expireDate of the existing credentials
-                existingCredentials.setExpireDate(encryptedExpireDate); // Store the encrypted string directly
                 existingCredentials.setApiHost(encryptedApiHost);
                 auditServiceInterface.save(existingCredentials);
                 response.put(GlobalConstants.Message, "Credentials updated successfully.");
             } else {
-                // Set encrypted values back to the serverCredentials and save a new record
                 serverCredentials.setApiKey(encryptedApiKey);
                 serverCredentials.setApiSecret(encryptedApiSecret);
-                serverCredentials.setExpireDate(encryptedExpireDate); // Store the encrypted string directly
                 serverCredentials.setApiHost(encryptedApiHost);
+                serverCredentials.setEmail(encryptedEmail);
+                serverCredentials.setCompanyName(encryptedCompanyName);
+                serverCredentials.setCompanyId(encryptedCompanyId);
+                serverCredentials.setCompanyPhone(encryptedCompanyPhone);
+                serverCredentials.setProductId(encryptedProductId);
+                serverCredentials.setPackageType(encryptedPackageType);
+                serverCredentials.setSoftwareID(encryptedSoftwareID);
 
                 auditServiceInterface.save(serverCredentials);
-
                 response.put(GlobalConstants.Message, "App setup completed successfully.");
             }
 
@@ -75,8 +99,6 @@ public class AuditController {
             return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
-
-
 
 
 
