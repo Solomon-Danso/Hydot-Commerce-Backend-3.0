@@ -51,6 +51,7 @@ public class AuditController {
             if (existingCredentials != null) {
                 // Update only the expireDate of the existing credentials
                 existingCredentials.setExpireDate(encryptedExpireDate); // Store the encrypted string directly
+                existingCredentials.setApiHost(encryptedApiHost);
                 auditServiceInterface.save(existingCredentials);
                 response.put(GlobalConstants.Message, "Credentials updated successfully.");
             } else {
