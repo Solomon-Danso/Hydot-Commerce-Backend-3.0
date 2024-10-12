@@ -18,7 +18,13 @@ public class ServerCredentials {
     private String apiKey;
     private String apiSecret;
     private String expireDate;
-    private String checkSum;
+    private String email;
+    private String companyName;
+    private String companyId;
+    private String companyPhone;
+    private String productId;
+    private String packageType;
+    private String softwareID;
 
 
 }
