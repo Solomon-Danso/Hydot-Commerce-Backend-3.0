@@ -24,6 +24,6 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(customInterceptor)
                 .addPathPatterns("/api/**")  // Apply to all routes under /api/audit
-                .excludePathPatterns("/api/audit/AppSetup","/api/audit/TopUp","/api/audit/Decrypt"); // Exclude the AppSetup route
+                .excludePathPatterns("/api/audit/AppSetup","/api/audit/TopUp","/api/audit/Decrypt","/api/audit/subscriptionPayment"); // Exclude the AppSetup route
     }
 }

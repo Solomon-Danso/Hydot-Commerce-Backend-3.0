@@ -28,42 +28,51 @@ public class CustomInterceptor implements HandlerInterceptor {
             return true; // Allow access to /AppSetup without checks
         }
 
+        // Fetch server credentials from the database
         ServerCredentials serverCredentials = auditServiceInterface.findExistingCredentials();
+
+        // If server credentials are not found, deny access and prompt to set up the application
         if (serverCredentials == null) {
-            return sendJsonErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "No credentials found. Please set up the application first.");
+            return sendJsonErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST,
+                    "Illegal Usage: Contact business@hydottech.com to purchase this software");
         }
 
+        // Decrypt the credentials
         String decryptedApiKey = decrypt(serverCredentials.getApiKey(), GlobalConstants.encryptionKey);
         String decryptedApiHost = decrypt(serverCredentials.getApiHost(), GlobalConstants.encryptionKey);
         String decryptedExpireDate = decrypt(serverCredentials.getExpireDate(), GlobalConstants.encryptionKey);
 
+        // Get the request host
         String requestHost = ApiHostGetter(request);
 
+        // Check if the request host matches the decrypted API host
         if (!decryptedApiHost.equals(requestHost)) {
-            return sendJsonErrorResponse(response, HttpServletResponse.SC_FORBIDDEN, "Unauthorized access: You are not allowed to use this app.");
-
+            return sendJsonErrorResponse(response, HttpServletResponse.SC_FORBIDDEN,
+                    "Unauthorized access: You are not allowed to use this app.");
         }
 
+        // Verify the provided API key in the request header
         String providedApiKey = request.getHeader("apiKey");
         if (providedApiKey == null || !providedApiKey.equals(decryptedApiKey)) {
-            return sendJsonErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized access: Invalid API key.");
+            return sendJsonErrorResponse(response, HttpServletResponse.SC_UNAUTHORIZED,
+                    "Unauthorized access: Invalid API key.");
         }
 
+        // Parse and verify the expiration date of the credentials
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
         Date expireDate = dateFormat.parse(decryptedExpireDate);
 
-// Add 1 day to the expireDate
+        // Add 1 day to the expire date
         Calendar calendar = Calendar.getInstance();
         calendar.setTime(expireDate);
         calendar.add(Calendar.DAY_OF_MONTH, 1);
         expireDate = calendar.getTime();
 
-// Check if the current date is after the updated expireDate
+        // Check if the current date is after the updated expire date
         if (new Date().after(expireDate)) {
-            return sendJsonErrorResponse(response, HttpServletResponse.SC_PAYMENT_REQUIRED, "Subscription expired: Please renew your subscription.");
+            return sendJsonErrorResponse(response, HttpServletResponse.SC_PAYMENT_REQUIRED,
+                    "Subscription expired: Please renew your subscription.");
         }
-
-
 
         return true; // Allow the request to proceed
     }

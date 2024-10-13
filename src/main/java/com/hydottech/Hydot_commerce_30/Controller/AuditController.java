@@ -1,23 +1,30 @@
 package com.hydottech.Hydot_commerce_30.Controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hydottech.Hydot_commerce_30.Entity.ServerCredentials;
 import com.hydottech.Hydot_commerce_30.Global.GlobalConstants;
 import com.hydottech.Hydot_commerce_30.Global.GlobalFunctions;
 import com.hydottech.Hydot_commerce_30.Service.AuditServiceInterface;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -26,9 +33,18 @@ import java.util.Map;
 @RequestMapping("/api/audit")
 public class AuditController {
 
+    private static final Logger logger = LoggerFactory.getLogger(AuditController.class);
+
 
     @Autowired
     private AuditServiceInterface auditServiceInterface;
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+
+
+
 
     @PostMapping("/AppSetup")
     public ResponseEntity<Map<String, Object>> AppSetup(@ModelAttribute ServerCredentials serverCredentials,
@@ -51,8 +67,8 @@ public class AuditController {
             // Check the Origin or Referer header to ensure request comes from the allowed URL
             String originHeader = request.getHeader("Origin");
             String refererHeader = request.getHeader("Referer");
-           // String allowedOrigin = "https://adminpanel.hydottech.com";
-            String allowedOrigin = "http://localhost:3000";
+            String allowedOrigin = "https://adminpanel.hydottech.com";
+            //String allowedOrigin = "http://localhost:3000";
 
 
             if (!allowedOrigin.equals(originHeader) && !allowedOrigin.equals(refererHeader)) {
@@ -193,13 +209,77 @@ public class AuditController {
             String encryptedExpireDate = encrypt(expireDate, GlobalConstants.encryptionKey);
             serverCredential.setExpireDate(encryptedExpireDate);
             auditServiceInterface.save(serverCredential);
-            response.put(GlobalConstants.Message, "ExpireDate updated successfully.");
+            response.put(GlobalConstants.Message, "Subscription was successful, Enjoy using your software.");
             response.put(GlobalConstants.Status, GlobalConstants.Success);
             return new ResponseEntity<>(response, HttpStatus.CREATED);
 
         } catch (Exception e) {
             response.put(GlobalConstants.Status, GlobalConstants.Failed);
             response.put(GlobalConstants.Message, "Error during setup: " + e.getMessage());
+            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+
+
+
+
+    @PostMapping("/subscriptionPayment")
+    public ResponseEntity<Map<String, Object>> topUp(
+            HttpServletRequest request,
+            @RequestParam(value = "amount", required = false) String amount) {
+
+        Map<String, Object> response = new HashMap<>();
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        try {
+            logger.info("Starting subscription payment process for amount: {}", amount);
+
+            // Fetch the server credentials
+            ServerCredentials serverCredential = auditServiceInterface.findExistingCredentials();
+            if (serverCredential == null) {
+                logger.error("Server credentials not found. Please configure your application before proceeding.");
+                response.put("message", "Configure your application before you proceed.");
+                response.put("status", "failed");
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+
+            // Decrypt the Software ID from the server credentials
+            String decryptedSoftwareID = decrypt(serverCredential.getSoftwareID(), GlobalConstants.encryptionKey);
+            String decryptedCompanyEmail = decrypt(serverCredential.getEmail(), GlobalConstants.encryptionKey);
+
+            // Send a GET request to the external API using RestTemplate
+            String externalApiUrl = "https://mainapi.hydottech.com/api/HCSSchedulePayment/" + decryptedSoftwareID + "/" + amount;
+            logger.info("Sending request to external API: {}", externalApiUrl);
+
+            ResponseEntity<String> externalApiResponse = restTemplate.exchange(
+                    externalApiUrl,
+                    HttpMethod.GET,
+                    new HttpEntity<>(new HttpHeaders()),
+                    String.class
+            );
+
+
+
+            String message = externalApiResponse.getBody();
+
+
+
+            // Handle the response from the external API
+            if (externalApiResponse.getStatusCode() == HttpStatus.OK) {
+                 response.put(GlobalConstants.Status, GlobalConstants.Success);
+                response.put(GlobalConstants.Message, "Please check your email "+decryptedCompanyEmail+" to approve this transaction.");
+                return new ResponseEntity<>(response, HttpStatus.CREATED);
+            } else {
+
+
+                response.put(GlobalConstants.Status, GlobalConstants.Failed);
+                response.put(GlobalConstants.Message, message);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+            }
+        } catch (Exception e) {
+            response.put(GlobalConstants.Status, GlobalConstants.Failed);
+            response.put(GlobalConstants.Message, e.getMessage());
             return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
@@ -241,45 +321,7 @@ public class AuditController {
 
 
 
-    @GetMapping("/GetAppSetup")
-    public ResponseEntity<Map<String, Object>> getAppSetup() {
-        Map<String, Object> response = new HashMap<>();
 
-        try {
-            // Retrieve existing ServerCredentials
-            ServerCredentials serverCredentials = auditServiceInterface.findExistingCredentials();
-
-            if (serverCredentials != null) {
-                // Decrypt the stored fields
-                String decryptedApiKey = decrypt(serverCredentials.getApiKey(), GlobalConstants.encryptionKey);
-                String decryptedApiSecret = decrypt(serverCredentials.getApiSecret(), GlobalConstants.encryptionKey);
-                String decryptedExpireDate = decrypt(serverCredentials.getExpireDate(), GlobalConstants.encryptionKey);
-                String decryptedApiHost = decrypt(serverCredentials.getApiHost(), GlobalConstants.encryptionKey);
-
-                // Convert decryptedExpireDate string to a Date object
-                SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-                Date expireDate = dateFormat.parse(decryptedExpireDate);
-
-                // Build response with decrypted values
-                response.put("apiKey", decryptedApiKey);
-                response.put("apiSecret", decryptedApiSecret);
-                response.put("expireDate", dateFormat.format(expireDate)); // Return as a formatted string
-                response.put("apiHost", decryptedApiHost);
-
-                response.put(GlobalConstants.Status, GlobalConstants.Success);
-                response.put(GlobalConstants.Message, "Data retrieved successfully.");
-                return new ResponseEntity<>(response, HttpStatus.OK);
-            } else {
-                response.put(GlobalConstants.Status, GlobalConstants.Failed);
-                response.put(GlobalConstants.Message, "No credentials found.");
-                return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
-            }
-        } catch (Exception e) {
-            response.put(GlobalConstants.Status, GlobalConstants.Failed);
-            response.put(GlobalConstants.Message, "Error retrieving data: " + e.getMessage());
-            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
 
     private String decrypt(String encryptedData, String key) throws Exception {
         // Implement AES decryption logic here

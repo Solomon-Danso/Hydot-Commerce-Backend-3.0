@@ -14,7 +14,7 @@ public class CorsConfig {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**") // Allow all endpoints
-                        .allowedOrigins("http://localhost:3000", "http://localhost:8000", "https://adminpanel.hydottech.com") // Allow only these two origins
+                        .allowedOrigins("http://localhost:3000", "http://localhost:8000", "https://adminpanel.hydottech.com", "https://mainapi.hydottech.com") // Allow only these two origins
                         .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") // Allow specific HTTP methods
                         .allowedHeaders("*") // Allow all headers
                         .allowCredentials(true); // Allow credentials (e.g., cookies)
