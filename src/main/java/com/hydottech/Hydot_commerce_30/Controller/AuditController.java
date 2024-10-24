@@ -10,6 +10,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -102,6 +107,107 @@ public class AuditController {
 
 
 
+    @PostMapping("/TopUp")
+    public ResponseEntity<Map<String, Object>> TopUp(
+                                                        HttpServletRequest request,
+                                                        @RequestParam(value = "apiHost", required = false) String apiHost,
+                                                        @RequestParam(value = "companyId", required = false) String companyId,
+                                                        @RequestParam(value = "productId", required = false) String productId,
+                                                        @RequestParam(value = "packageType", required = false) String packageType,
+                                                        @RequestParam(value = "softwareID", required = false) String softwareID,
+                                                        @RequestParam(value = "expireDate", required = false) String expireDate) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            // Check the Origin or Referer header to ensure request comes from the allowed URL
+            String originHeader = request.getHeader("Origin");
+            String refererHeader = request.getHeader("Referer");
+            // String allowedOrigin = "https://mainapi.hydottech.com";
+            String allowedOrigin = "http://localhost:8000";
+
+
+            if (!allowedOrigin.equals(originHeader) && !allowedOrigin.equals(refererHeader)) {
+                response.put(GlobalConstants.Status, GlobalConstants.Failed);
+                response.put("originHeader",originHeader);
+                response.put("refererHeader",refererHeader);
+                response.put(GlobalConstants.Message, "Unauthorized request source");
+                return new ResponseEntity<>(response, HttpStatus.FORBIDDEN);
+            }
+
+
+
+            ServerCredentials serverCredential = auditServiceInterface.findExistingCredentials();
+            if(serverCredential==null){
+                response.put(GlobalConstants.Message, "Configure your application before you proceed.");
+                response.put(GlobalConstants.Status, GlobalConstants.Failed);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+
+            }
+
+
+            String decryptedApiHost = decrypt(serverCredential.getApiHost(), GlobalConstants.encryptionKey);
+            String decryptedCompanyId = decrypt(serverCredential.getCompanyId(), GlobalConstants.encryptionKey);
+            String decryptedProductId = decrypt(serverCredential.getProductId(), GlobalConstants.encryptionKey);
+            String decryptedPackageType = decrypt(serverCredential.getPackageType(), GlobalConstants.encryptionKey);
+            String decryptedSoftwareID = decrypt(serverCredential.getSoftwareID(), GlobalConstants.encryptionKey);
+
+            if(!decryptedApiHost.equals(apiHost)){
+                response.put(GlobalConstants.Message, "Invalid Api Host");
+                response.put("ConfigData",decryptedApiHost);
+                response.put("ResponseData",apiHost);
+                response.put(GlobalConstants.Status, GlobalConstants.Failed);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+
+            }
+
+            if(!decryptedCompanyId.equals(companyId)){
+                response.put(GlobalConstants.Message, "Invalid Company ID");
+                response.put(GlobalConstants.Status, GlobalConstants.Failed);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+
+            }
+
+            if(!decryptedProductId.equals(productId)){
+                response.put(GlobalConstants.Message, "Invalid Product ID");
+                response.put(GlobalConstants.Status, GlobalConstants.Failed);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+
+            }
+
+            if(!decryptedPackageType.equals(packageType)){
+                response.put(GlobalConstants.Message, "Invalid Package Type");
+                response.put(GlobalConstants.Status, GlobalConstants.Failed);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+
+            }
+
+            if(!decryptedSoftwareID.equals(softwareID)){
+                response.put(GlobalConstants.Message, "Invalid Software ID");
+                response.put(GlobalConstants.Status, GlobalConstants.Failed);
+                return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
+
+            }
+
+            // Encrypt and process the data as you have done before
+            String encryptedExpireDate = encrypt(expireDate, GlobalConstants.encryptionKey);
+            serverCredential.setExpireDate(encryptedExpireDate);
+            auditServiceInterface.save(serverCredential);
+            response.put(GlobalConstants.Message, "ExpireDate updated successfully.");
+            response.put(GlobalConstants.Status, GlobalConstants.Success);
+            return new ResponseEntity<>(response, HttpStatus.CREATED);
+
+        } catch (Exception e) {
+            response.put(GlobalConstants.Status, GlobalConstants.Failed);
+            response.put(GlobalConstants.Message, "Error during setup: " + e.getMessage());
+            return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+
+
+
+
     private String encrypt(String data, String key) throws Exception {
         // Implement AES encryption logic here
         // Use javax.crypto.Cipher and related classes for AES encryption
@@ -114,6 +220,25 @@ public class AuditController {
         byte[] encryptedData = cipher.doFinal(data.getBytes());
         return java.util.Base64.getEncoder().encodeToString(encryptedData);
     }
+
+
+
+    @PostMapping("/Decrypt")
+    public ResponseEntity<Map<String, Object>> Decrypter(
+            @RequestParam(value = "dataField", required = false) String dataField) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        String decrypted = decrypt2(dataField, GlobalConstants.encryptionKey);
+        response.put(GlobalConstants.Status, GlobalConstants.Success);
+        response.put(GlobalConstants.Message, decrypted);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+
+
+    }
+
+
+
 
 
     @GetMapping("/GetAppSetup")
@@ -169,6 +294,30 @@ public class AuditController {
         byte[] decryptedData = cipher.doFinal(decodedData);
         return new String(decryptedData);
     }
+
+    private String decrypt2(String encryptedData, String key) {
+        try {
+            // Initialize the AES cipher for decryption
+            javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("AES");
+            javax.crypto.spec.SecretKeySpec secretKey = new javax.crypto.spec.SecretKeySpec(key.getBytes(), "AES");
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey);
+
+            // Decode and decrypt the data
+            byte[] decodedData = java.util.Base64.getDecoder().decode(encryptedData);
+            byte[] decryptedData = cipher.doFinal(decodedData);
+
+            return new String(decryptedData);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("Decryption error: No such algorithm found", e);
+        } catch (NoSuchPaddingException e) {
+            throw new RuntimeException("Decryption error: No such padding found", e);
+        } catch (InvalidKeyException e) {
+            throw new RuntimeException("Decryption error: Invalid key", e);
+        } catch (IllegalBlockSizeException | BadPaddingException e) {
+            throw new RuntimeException("Decryption error: Problem with block size or padding", e);
+        }
+    }
+
 
 
 

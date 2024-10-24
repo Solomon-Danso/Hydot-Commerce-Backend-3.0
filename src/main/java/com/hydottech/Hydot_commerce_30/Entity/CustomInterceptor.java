@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,8 +38,10 @@ public class CustomInterceptor implements HandlerInterceptor {
         String decryptedExpireDate = decrypt(serverCredentials.getExpireDate(), GlobalConstants.encryptionKey);
 
         String requestHost = ApiHostGetter(request);
+
         if (!decryptedApiHost.equals(requestHost)) {
             return sendJsonErrorResponse(response, HttpServletResponse.SC_FORBIDDEN, "Unauthorized access: You are not allowed to use this app.");
+
         }
 
         String providedApiKey = request.getHeader("apiKey");
@@ -48,9 +51,19 @@ public class CustomInterceptor implements HandlerInterceptor {
 
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
         Date expireDate = dateFormat.parse(decryptedExpireDate);
+
+// Add 1 day to the expireDate
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(expireDate);
+        calendar.add(Calendar.DAY_OF_MONTH, 1);
+        expireDate = calendar.getTime();
+
+// Check if the current date is after the updated expireDate
         if (new Date().after(expireDate)) {
             return sendJsonErrorResponse(response, HttpServletResponse.SC_PAYMENT_REQUIRED, "Subscription expired: Please renew your subscription.");
         }
+
+
 
         return true; // Allow the request to proceed
     }
@@ -88,7 +101,8 @@ public class CustomInterceptor implements HandlerInterceptor {
             if (url.getPort() != -1 && (url.getPort() != 80 && url.getPort() != 443)) {
                 apiHost += ":" + url.getPort();
             }
-            return apiHost;
+            String finalApihost = apiHost+"/";
+            return finalApihost;
         } catch (java.net.MalformedURLException e) {
             return null;
         }
